@@ -1,6 +1,6 @@
 --CRUD
 
---CREAR
+------------- CREAR --------------------
 CREATE PROC CrearCuenta
 @TipoCuenta varchar (10),
 @NombreCuenta varchar (20),
@@ -55,6 +55,56 @@ INSERT INTO INVERSION (IDCuenta, TipoActivo, Nombre, Cantidad, PrecioCompra, Pre
 VALUES (@IDCuenta, @TipoActivo, @Nombre, @Cantidad, @PrecioCompra, @PrecioActual);
 END
 
+
+-- REVISAR
+CREATE PROC AgregarInversion
+    @IDCuenta INT,
+    @TipoActivo VARCHAR(30),
+    @Nombre VARCHAR(4),
+    @Cantidad INT,
+    @PrecioCompra FLOAT
+AS
+BEGIN
+    DECLARE @IDUsuario INT;
+    DECLARE @Comision FLOAT = 0;
+    DECLARE @PrecioCompraFinal FLOAT = 0;
+    DECLARE @SaldoDisponible FLOAT = 0;
+    DECLARE @TotalCompra FLOAT = 0;
+
+    -- Buscar el usuario dueño de la cuenta
+    SELECT @IDUsuario = IDUsuario FROM CUENTAS WHERE IDCuenta = @IDCuenta;
+
+    -- Buscar la comisión del asesor asociado
+    SELECT TOP 1 @Comision = A.Comision
+    FROM ASESOR A
+    INNER JOIN ASESOR_USUARIO AU ON A.IDAsesor = AU.IDAsesor
+    WHERE AU.IDUsuario = @IDUsuario;
+
+    -- Calcular precio de compra final con comisión
+    SET @PrecioCompraFinal = @PrecioCompra * (1 + ISNULL(@Comision, 0));
+    SET @TotalCompra = @PrecioCompraFinal * @Cantidad;
+
+    -- Consultar saldo disponible desde la función
+    SELECT @SaldoDisponible = dbo.fn_SaldoDisponible(@IDCuenta);
+
+    IF @SaldoDisponible < @TotalCompra
+    BEGIN
+        PRINT 'ERROR: Saldo insuficiente para realizar la compra.';
+        RETURN;
+    END
+
+    -- Registrar la inversión con el precio con comisión
+    INSERT INTO INVERSION (IDCuenta, TipoActivo, Nombre, Cantidad, PrecioCompra, PrecioActual)
+    VALUES (@IDCuenta, @TipoActivo, @Nombre, @Cantidad, @PrecioCompraFinal, @PrecioCompraFinal);
+
+    -- Registrar el movimiento tipo Egreso por la compra
+    INSERT INTO MOVIMIENTOS (IDCuenta, IDCategoria, TipoMovimiento, Importe, Fecha)
+    VALUES (@IDCuenta, (SELECT IDCategoria FROM CATEGORIA WHERE NombreCategoria = 'Inversion'), 'Egreso', @TotalCompra, GETDATE());
+
+    PRINT 'Compra registrada correctamente con comisión aplicada.';
+END;
+GO
+
 CREATE PROC CrearMovimiento
 @IDCuenta int,
 @IDCategoria int,
@@ -81,7 +131,7 @@ END
 
 
 
---MODIFICAR
+------------ MODIFICAR -------------------
 
 CREATE PROC ModificarCuentas
 @IDCuenta int,
@@ -457,3 +507,63 @@ BEGIN
 PRINT ' NO EXISTE INVERSION CON ESE ID';
 END
 END;
+
+
+-- ADICIONALES --
+
+CREATE PROC VenderInversion
+    @IDCuenta INT,
+    @Nombre VARCHAR(4), 
+    @CantidadVendida INT,
+    @PrecioVenta FLOAT
+AS
+BEGIN
+    DECLARE @IDUsuario INT;
+    DECLARE @Comision FLOAT = 0;
+    DECLARE @PrecioVentaFinal FLOAT = 0;
+    DECLARE @CantidadActual INT;
+
+    SELECT @IDUsuario = IDUsuario FROM CUENTAS WHERE IDCuenta = @IDCuenta;
+
+    SELECT TOP 1 @Comision = A.Comision
+    FROM ASESOR A
+    INNER JOIN ASESOR_USUARIO AU ON A.IDAsesor = AU.IDAsesor
+    WHERE AU.IDUsuario = @IDUsuario;
+
+    SET @PrecioVentaFinal = @PrecioVenta * (1 - ISNULL(@Comision, 0));
+
+    INSERT INTO MOVIMIENTOS (IDCuenta, IDCategoria, TipoMovimiento, Importe, Fecha)
+    VALUES (@IDCuenta, (SELECT IDCategoria FROM CATEGORIA WHERE NombreCategoria = 'Inversion'), 'Ingreso', @PrecioVentaFinal * @CantidadVendida, GETDATE());
+
+    SELECT @CantidadActual = Cantidad FROM INVERSION WHERE IDCuenta = @IDCuenta AND Nombre = @Nombre;
+
+    IF @CantidadActual IS NULL
+    BEGIN
+        PRINT 'Error: La inversión no existe para esta cuenta.';
+        RETURN;
+    END
+
+    IF @CantidadVendida > @CantidadActual
+    BEGIN
+        PRINT 'Error: No se pueden vender más activos de los que se tienen.';
+        RETURN;
+    END
+
+    IF @CantidadVendida = @CantidadActual
+    BEGIN
+        DELETE FROM INVERSION WHERE IDCuenta = @IDCuenta AND Nombre = @Nombre;
+        PRINT 'Venta completa: La inversión fue eliminada.';
+    END
+    ELSE
+    BEGIN
+        UPDATE INVERSION
+        SET Cantidad = Cantidad - @CantidadVendida
+        WHERE IDCuenta = @IDCuenta AND Nombre = @Nombre;
+
+        PRINT 'Venta parcial: La cantidad de la inversión fue actualizada.';
+    END
+END;
+GO
+
+
+
