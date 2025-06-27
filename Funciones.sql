@@ -1,30 +1,6 @@
 
 -- FUNCIONES
 
---Funcion para calcular el patrimonio de un usuario
-GO
-CREATE FUNCTION fn_SaldoDisponiblePorNombre (
-    @Nombre VARCHAR(40) = NULL,
-    @Apellido VARCHAR(40) = NULL
-)
-RETURNS FLOAT
-AS
-BEGIN
-    DECLARE @Saldo FLOAT;
-
-    SELECT @Saldo = ISNULL(SUM(CASE WHEN M.TipoMovimiento = 'Ingreso' THEN M.Importe ELSE -M.Importe END), 0)
-    FROM MOVIMIENTOS M
-    INNER JOIN CUENTAS C ON M.IDCuenta = C.IDCuenta
-    INNER JOIN USUARIO U ON C.IDUsuario = U.IDUsuario
-    WHERE (@Nombre IS NULL OR U.Nombre = @Nombre)
-      AND (@Apellido IS NULL OR U.Apellido = @Apellido);
-
-    RETURN @Saldo;
-END;
-GO
-
-
-
 --Funcion calcular comision por cada asesor
 CREATE FUNCTION fn_ComisionAsesorPorFecha (
     @Nombre VARCHAR(40) = NULL,
@@ -53,3 +29,38 @@ BEGIN
     RETURN ISNULL(@ComisionTotal, 0);
 END;
 GO
+
+
+CREATE FUNCTION SaldoCuenta (
+    @IDCuenta int
+)
+RETURNS FLOAT
+AS
+BEGIN
+    DECLARE @INGRESOS FLOAT;
+    DECLARE @EGRESOS FLOAT;
+
+    SELECT @INGRESOS =SUM(IMPORTE) FROM MOVIMIENTOS WHERE IDCuenta = @IDCuenta AND TipoMovimiento = 'Ingreso';
+    SELECT @EGRESOS = SUM(IMPORTE) FROM MOVIMIENTOS WHERE IDCuenta = @IDCuenta AND TipoMovimiento = 'Egreso';
+    RETURN ISNULL (@INGRESOS, 0) - ISNULL(@EGRESOS,0);
+    END;
+
+
+CREATE FUNCTION SaldoUsuario (
+@IDUsuario int
+)
+RETURNS FLOAT
+AS
+BEGIN
+    DECLARE @TotalCuentas FLOAT
+
+    SELECT @TotalCuentas = SUM (CASE WHEN MOVIMIENTOS.TipoMovimiento = 'Ingreso' then MOVIMIENTOS.Importe 
+    WHEN MOVIMIENTOS.TipoMovimiento = 'Egreso' then -MOVIMIENTOS.Importe 
+    ELSE 0
+    END)
+    FROM MOVIMIENTOS
+    JOIN CUENTAS C ON MOVIMIENTOS.IDCuenta = C.IDCuenta
+    WHERE C.IDUsuario = @IDUsuario;
+
+    RETURN ISNULL (@TotalCuentas,0);
+    end;
