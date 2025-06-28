@@ -1,7 +1,6 @@
 -- TRIGGERS 
 
 --Trigger para evitar saldos negativos
-GO
 CREATE TRIGGER Trig_EvitarSaldoNegativo
 ON MOVIMIENTOS
 INSTEAD OF INSERT
@@ -49,8 +48,8 @@ BEGIN
 END;
 GO
 
+
 --Trigger para evitar que las comisiones esten fuera de rango
-GO
 CREATE TRIGGER TR_ControlComision
 ON ASESOR
 AFTER UPDATE

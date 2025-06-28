@@ -1,37 +1,8 @@
-
 -- FUNCIONES
 
---Funcion calcular comision por cada asesor
-CREATE FUNCTION fn_ComisionAsesorPorFecha (
-    @Nombre VARCHAR(40) = NULL,
-    @Apellido VARCHAR(40) = NULL,
-    @FechaDesde DATE,
-    @FechaHasta DATE
-)
-RETURNS FLOAT
-AS
-BEGIN
-    DECLARE @ComisionTotal FLOAT = 0;
-
-    -- Calcular la comisión total del asesor en el rango de fechas
-    SELECT @ComisionTotal = SUM(M.Importe * A.Comision)
-    FROM ASESOR A
-    INNER JOIN ASESOR_USUARIO AU ON A.IDAsesor = AU.IDAsesor
-    INNER JOIN CUENTAS C ON AU.IDUsuario = C.IDUsuario
-    INNER JOIN MOVIMIENTOS M ON C.IDCuenta = M.IDCuenta
-    INNER JOIN CATEGORIA CAT ON M.IDCategoria = CAT.IDCategoria
-    WHERE A.Nombre = @Nombre
-      AND A.Apellido = @Apellido
-      AND M.TipoMovimiento IN ('Ingreso', 'Egreso')
-      AND CAT.NombreCategoria = 'Inversion'
-      AND M.Fecha BETWEEN @FechaDesde AND @FechaHasta;
-
-    RETURN ISNULL(@ComisionTotal, 0);
-END;
+--Funcion para calcular el patrimonio de un usuario
 GO
-
-
-CREATE FUNCTION SaldoCuenta (
+CREATE FUNCTION dbo.SaldoCuenta (
     @IDCuenta int
 )
 RETURNS FLOAT
@@ -44,11 +15,10 @@ BEGIN
     SELECT @EGRESOS = SUM(IMPORTE) FROM MOVIMIENTOS WHERE IDCuenta = @IDCuenta AND TipoMovimiento = 'Egreso';
     RETURN ISNULL (@INGRESOS, 0) - ISNULL(@EGRESOS,0);
     END;
-
-
-CREATE FUNCTION SaldoUsuario (
-@IDUsuario int
-)
+GO
+--Funcion calcular comision por cada asesor
+GO
+CREATE FUNCTION dbo.SaldoUsuario (@IDUsuario int)
 RETURNS FLOAT
 AS
 BEGIN
@@ -64,3 +34,33 @@ BEGIN
 
     RETURN ISNULL (@TotalCuentas,0);
     end;
+GO
+--Funcion para consultar mejores tenencia 
+GO
+CREATE FUNCTION dbo.VariacionPrecioInv(@IDUsuario int)
+RETURNS TABLE
+	AS
+	RETURN (
+	SELECT INVERSION.Nombre, (INVERSION.PrecioActual - INVERSION.PrecioCompra) AS TENENCIA FROM INVERSION
+	JOIN CUENTAS ON INVERSION.IDCuenta = CUENTAS.IDCuenta
+	WHERE CUENTAS.IDUsuario = @IDUsuario);;
+GO
+--Funcion totales por mes por ingreso
+GO
+CREATE FUNCTION TotalesPorMesPorUsuario (
+    @IDUsuario INT
+)
+RETURNS TABLE
+AS
+RETURN (
+SELECT 
+YEAR(MOVIMIENTOS.Fecha) AS Año,
+MONTH(MOVIMIENTOS.Fecha) AS Mes,
+SUM(CASE WHEN MOVIMIENTOS.TipoMovimiento = 'Ingreso' THEN MOVIMIENTOS.Importe ELSE 0 END) AS TotalIngresos,
+SUM(CASE WHEN MOVIMIENTOS.TipoMovimiento = 'Egreso' THEN MOVIMIENTOS.Importe ELSE 0 END) AS TotalEgresos
+FROM MOVIMIENTOS
+JOIN CUENTAS ON MOVIMIENTOS.IDCuenta = CUENTAS.IDCuenta
+WHERE CUENTAS.IDUsuario = @IDUsuario
+GROUP BY YEAR(MOVIMIENTOS.Fecha), MONTH(MOVIMIENTOS.Fecha)
+);
+GO
